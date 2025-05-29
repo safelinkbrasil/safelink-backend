@@ -1,36 +1,61 @@
 const express = require('express');
-const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Usuario = require('../models/Usuario');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'segredoSafelink';
+const router = express.Router();
 
+// ROTA DE REGISTRO
 router.post('/register', async (req, res) => {
-  const { email, senha } = req.body;
+  try {
+    const { nome, email, senha } = req.body;
 
-  const usuarioExistente = await Usuario.findOne({ email });
-  if (usuarioExistente) return res.status(400).json({ mensagem: 'Usuário já existe' });
+    const usuarioExistente = await Usuario.findOne({ email });
+    if (usuarioExistente) {
+      return res.status(400).json({ mensagem: 'Usuário já cadastrado' });
+    }
 
-  const hash = await bcrypt.hash(senha, 10);
-  const novo = new Usuario({ email, senha: hash });
-  await novo.save();
+    const senhaCriptografada = await bcrypt.hash(senha, 10);
 
-  res.json({ mensagem: 'Usuário cadastrado com sucesso' });
+    const novoUsuario = new Usuario({
+      nome,
+      email,
+      senha: senhaCriptografada
+    });
+
+    await novoUsuario.save();
+
+    res.status(201).json({ mensagem: 'Usuário registrado com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ mensagem: 'Erro ao registrar usuário', erro: err.message });
+  }
 });
 
+// ROTA DE LOGIN
 router.post('/login', async (req, res) => {
   const { email, senha } = req.body;
-  const usuario = await Usuario.findOne({ email });
 
-  if (!usuario) return res.status(401).json({ mensagem: 'Usuário não encontrado' });
+  try {
+    const usuario = await Usuario.findOne({ email });
+    if (!usuario) {
+      return res.status(401).json({ mensagem: 'Usuário não encontrado' });
+    }
 
-  const senhaOk = await bcrypt.compare(senha, usuario.senha);
-  if (!senhaOk) return res.status(401).json({ mensagem: 'Senha inválida' });
+    const senhaValida = await bcrypt.compare(senha, usuario.senha);
+    if (!senhaValida) {
+      return res.status(401).json({ mensagem: 'Senha incorreta' });
+    }
 
-  const token = jwt.sign({ id: usuario._id, email: usuario.email }, JWT_SECRET, { expiresIn: '1d' });
+    const token = jwt.sign(
+      { id: usuario._id, email: usuario.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
 
-  res.json({ sucesso: true, token });
+    res.status(200).json({ token });
+  } catch (err) {
+    res.status(500).json({ mensagem: 'Erro ao fazer login', erro: err.message });
+  }
 });
 
 module.exports = router;
